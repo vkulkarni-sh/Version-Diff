@@ -189,20 +189,9 @@ def diff(source_key: str, dest_key: str, refresh: bool = False) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# English narrative (Anthropic SDK)
+# Prompt builder (shared by the release-notes generator)
 # --------------------------------------------------------------------------- #
-_SYSTEM = (
-    "You are a release-notes assistant for the SoundHound OASYS platform. "
-    "Given the bugs and enhancements fixed across a range of releases, write a "
-    "clear, concise upgrade summary in plain English for a delivery engineer "
-    "planning an upgrade. Group the narrative by theme where natural. Reference "
-    "tickets inline by their key (e.g. AM5-18731) so they can be cross-checked. "
-    "Do not invent tickets or details beyond what is provided. Use short "
-    "paragraphs and bullet lists; no preamble, no closing pleasantries."
-)
-
-
-def _diff_to_prompt(d: dict) -> str:
+def diff_to_prompt(d: dict) -> str:
     lines = [
         f"Upgrade from {d['source']['label']} to {d['destination']['label']}.",
         f"Versions in range ({len(d['range_keys'])}): "
@@ -223,24 +212,3 @@ def _diff_to_prompt(d: dict) -> str:
             lines.append(f"- ENH {t['key']}: {t['summary']} [{t['status']}]")
         lines.append("")
     return "\n".join(lines)
-
-
-def narrate(source_key: str, dest_key: str) -> str:
-    if not config.anthropic_configured():
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set on this server — the English summary is "
-            "unavailable. The grouped ticket list is still fully available."
-        )
-    import anthropic
-
-    d = diff(source_key, dest_key)
-    prompt = _diff_to_prompt(d)
-
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=180.0, max_retries=2)
-    msg = client.messages.create(
-        model=config.VERSION_DIFF_MODEL,
-        max_tokens=4096,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")

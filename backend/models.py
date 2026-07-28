@@ -52,10 +52,16 @@ class DiffResponse(BaseModel):
     total_other: int = 0
 
 
-class SummaryRequest(BaseModel):
+class ReleaseNotesRequest(BaseModel):
     source: str
     destination: str
 
 
-class SummaryResponse(BaseModel):
-    summary: str
+class ReleaseNotesResponse(BaseModel):
+    file_id: str
+    filename: str
+    download_path: str
+    range_keys: list[str]
+    total_bugs: int
+    total_enhancements: int
+    had_prose: bool

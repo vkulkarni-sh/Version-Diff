@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, GitCompareArrows, Loader2, RefreshCw, Sparkles, AlertTriangle } from 'lucide-react'
+import { ArrowRight, GitCompareArrows, Loader2, RefreshCw, FileText, Download, AlertTriangle } from 'lucide-react'
 import VersionCombobox from './components/VersionCombobox'
 import ResultView from './components/ResultView'
-import { getHealth, getVersions, postDiff, postSummary } from './services/api'
+import { absoluteApiUrl, getHealth, getVersions, postDiff, postReleaseNotes } from './services/api'
+import type { ReleaseNotes } from './services/api'
 import type { DiffResponse, Health, Version } from './types'
 
 export default function App() {
@@ -18,9 +19,9 @@ export default function App() {
   const [comparing, setComparing] = useState(false)
   const [diffError, setDiffError] = useState<string | null>(null)
 
-  const [summary, setSummary] = useState<string | null>(null)
-  const [summarizing, setSummarizing] = useState(false)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [notes, setNotes] = useState<ReleaseNotes | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [notesError, setNotesError] = useState<string | null>(null)
 
   const loadVersions = async (refresh = false) => {
     setLoadingVersions(true)
@@ -45,8 +46,8 @@ export default function App() {
     setComparing(true)
     setDiffError(null)
     setDiff(null)
-    setSummary(null)
-    setSummaryError(null)
+    setNotes(null)
+    setNotesError(null)
     try {
       setDiff(await postDiff(source, destination))
     } catch (e) {
@@ -56,17 +57,20 @@ export default function App() {
     }
   }
 
-  const summarize = async () => {
+  const generateNotes = async () => {
     if (!diff) return
-    setSummarizing(true)
-    setSummaryError(null)
+    setGenerating(true)
+    setNotesError(null)
+    setNotes(null)
     try {
-      const res = await postSummary(diff.source.key, diff.destination.key)
-      setSummary(res.summary)
+      const res = await postReleaseNotes(diff.source.key, diff.destination.key)
+      setNotes(res)
+      // Auto-open the PDF in a new tab as soon as it's ready.
+      window.open(absoluteApiUrl(res.download_path), '_blank', 'noopener')
     } catch (e) {
-      setSummaryError(e instanceof Error ? e.message : String(e))
+      setNotesError(e instanceof Error ? e.message : String(e))
     } finally {
-      setSummarizing(false)
+      setGenerating(false)
     }
   }
 
@@ -151,25 +155,33 @@ export default function App() {
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold text-slate-100">Changes</h2>
-            {health?.anthropic_configured && (
-              <button className="btn-secondary inline-flex items-center gap-2" onClick={summarize} disabled={summarizing}>
-                {summarizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-amelia-300" />}
-                Summarize in English
-              </button>
-            )}
+            <button className="btn-primary inline-flex items-center gap-2" onClick={generateNotes} disabled={generating}
+                    title="Generate a release-notes PDF for this range">
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              Generate Release Notes
+            </button>
           </div>
 
-          {summaryError && (
-            <div className="card border-amber-500/40 bg-amber-500/10 flex items-start gap-2 text-sm text-amber-200">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {summaryError}
+          {notesError && (
+            <div className="card border-rose-500/40 bg-rose-500/10 flex items-start gap-2 text-sm text-rose-200">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {notesError}
             </div>
           )}
-          {summary && (
-            <div className="card border-amelia-500/40 bg-amelia-600/10">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amelia-300 mb-2">
-                <Sparkles className="w-3.5 h-3.5" /> AI summary
+          {notes && (
+            <div className="card border-amelia-500/40 bg-amelia-600/10 flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-sm text-slate-200">
+                <div className="flex items-center gap-2 font-semibold text-amelia-200">
+                  <FileText className="w-4 h-4" /> Release notes ready
+                </div>
+                <div className="mt-1 text-slate-400 text-xs">
+                  {notes.filename} · {notes.total_bugs} bug fixes · {notes.total_enhancements} enhancements
+                  {notes.had_prose ? ' · AI overview included' : ' · ticket listing only (no AI key)'}
+                </div>
               </div>
-              <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{summary}</div>
+              <a className="btn-secondary inline-flex items-center gap-2" href={absoluteApiUrl(notes.download_path)}
+                 target="_blank" rel="noopener noreferrer" download>
+                <Download className="w-4 h-4" /> Download PDF
+              </a>
             </div>
           )}
 

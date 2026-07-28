@@ -11,7 +11,7 @@ Endpoints:
   GET  /api/health         — liveness + which integrations are configured
   GET  /api/versions       — ordered version list for the dropdowns
   POST /api/diff           — grouped Bugs/Enhancements across the range
-  POST /api/diff/summary   — AI English narrative
+  POST /api/diff/release-notes — generate a release-notes PDF (download path)
 """
 from __future__ import annotations
 

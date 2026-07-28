@@ -3,7 +3,8 @@ OASYS Version Diff — API routes.
 
   GET  /api/versions?refresh=0   — ordered version list for the two dropdowns
   POST /api/diff                 — grouped Bugs/Enhancements across the range
-  POST /api/diff/summary         — AI English narrative for the same range
+  POST /api/diff/release-notes    — generate a release-notes PDF, return download path
+  GET  /api/diff/release-notes/{id} — download the generated PDF
 """
 from __future__ import annotations
 
@@ -11,10 +12,11 @@ import logging
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 import config
-from models import DiffRequest, SummaryRequest
-from services import version_diff
+from models import DiffRequest, ReleaseNotesRequest
+from services import release_notes, version_diff
 
 log = logging.getLogger(__name__)
 
@@ -73,17 +75,24 @@ def post_diff(req: DiffRequest) -> dict:
         raise _handle_upstream(e)
 
 
-@router.post("/diff/summary")
-def post_summary(req: SummaryRequest) -> dict:
+@router.post("/diff/release-notes")
+def post_release_notes(req: ReleaseNotesRequest) -> dict:
+    """Generate a release-notes PDF for the range and return its download path.
+    The AI prose (overview + highlights) is included when ANTHROPIC_API_KEY is
+    set; otherwise the PDF still renders with the full ticket listing."""
     _require_config()
-    if not config.anthropic_configured():
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not set — the English summary is unavailable.")
     try:
-        return {"summary": version_diff.narrate(req.source, req.destination)}
+        return release_notes.create(req.source, req.destination)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except RuntimeError as e:
-        raise HTTPException(503, str(e))
     except Exception as e:  # noqa: BLE001
-        log.exception("summary failed")
+        log.exception("release-notes generation failed")
         raise _handle_upstream(e)
+
+
+@router.get("/diff/release-notes/{file_id}")
+def get_release_notes(file_id: str) -> FileResponse:
+    path = release_notes.path_for(file_id)
+    if path is None:
+        raise HTTPException(404, "Release-notes file not found or expired. Generate it again.")
+    return FileResponse(str(path), media_type="application/pdf", filename=path.name)

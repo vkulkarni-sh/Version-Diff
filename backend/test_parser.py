@@ -82,4 +82,26 @@ assert back and back[0]["key"] == "AM5-999", back   # would KeyError before the 
 assert "ticket_key" not in back[0]
 print("store cache round-trip preserves 'key' OK")
 
+# --- 6. release-notes PDF renders --------------------------------------------- #
+from services import release_notes
+import config as _cfg
+_diff = {
+    "source": {"label": "Core-7.3.1", "oasys_label": None, "section": "Current", "released": True, "release_date": "2025-12-17"},
+    "destination": {"label": "Core-7.3.3", "oasys_label": None, "section": "Current", "released": True, "release_date": "2026-01-14"},
+    "range_keys": ["1", "2"], "total_bugs": 1, "total_enhancements": 1, "total_other": 0,
+    "buckets": [
+        {"version": {"label": "Core-7.3.1", "oasys_label": None, "section": "Current", "released": True, "release_date": "2025-12-17"},
+         "bugs": [{"key": "AM5-1", "summary": "Bug with <b>&special</b>", "status": "Done", "url": "https://x/AM5-1"}],
+         "enhancements": [{"key": "AM5-2", "summary": "New thing", "status": "Done", "url": "https://x/AM5-2"}], "other": [], "error": None},
+        {"version": {"label": "Core-7.3.3", "oasys_label": None, "section": "Current", "released": True, "release_date": "2026-01-14"},
+         "bugs": [], "enhancements": [], "other": [], "error": None},
+    ],
+}
+_out = _cfg.DATA_DIR / "exports" / "smoke.pdf"
+_out.parent.mkdir(parents=True, exist_ok=True)
+release_notes.build_pdf(_diff, {"overview": "Overview text (AM5-1).", "highlights": ["Fixed AM5-1.", "Added AM5-2."]}, _out)
+assert _out.stat().st_size > 1000 and _out.read_bytes()[:5] == b"%PDF-", "PDF not produced"
+assert release_notes.path_for("../etc/passwd") is None  # traversal guard
+print("release-notes PDF render + traversal guard OK")
+
 print("\nALL PARSER/LOGIC TESTS PASSED")

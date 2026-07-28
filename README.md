@@ -7,7 +7,8 @@ It reads the **"Amelia & OASYS Release Schedule"** Confluence page to discover
 the ordered list of releases and their Jira release links, pulls each release's
 **bugs and enhancements** from Jira, and — given a **Source** and **Destination**
 version — shows everything fixed across that (inclusive) range, grouped and
-linked back to Jira, with an optional plain-English AI summary.
+linked back to Jira, and generates a downloadable **release-notes PDF** (with an
+AI-written Overview + Highlights when a Claude key is configured).
 
 ## How it works
 
@@ -48,7 +49,8 @@ Confluence page (1548517510)         Jira (soundhound.atlassian.net)
 | GET | `/api/health` | liveness + which integrations are configured |
 | GET | `/api/versions?refresh=0` | ordered version list for the dropdowns |
 | POST | `/api/diff` `{source,destination,refresh?}` | grouped Bugs/Enhancements across the range |
-| POST | `/api/diff/summary` `{source,destination}` | AI English narrative for the range |
+| POST | `/api/diff/release-notes` `{source,destination}` | generate a release-notes PDF; returns `{download_path, filename, …}` |
+| GET | `/api/diff/release-notes/{file_id}` | download the generated PDF |
 
 `source`/`destination` are version **keys** (the numeric Jira version id from
 `/api/versions`).
@@ -60,7 +62,7 @@ Confluence page (1548517510)         Jira (soundhound.atlassian.net)
 | `JIRA_USER_EMAIL` | yes | same user for Jira + Confluence |
 | `JIRA_API_TOKEN` | yes | Jira Basic-auth token |
 | `CONFLUENCE_API_TOKEN` | yes | Confluence Basic-auth token (same user) |
-| `ANTHROPIC_API_KEY` | for summary | omit → grouped list still works, summary button hidden |
+| `ANTHROPIC_API_KEY` | for PDF prose | omit → PDF still generates with the full ticket listing, just no AI Overview/Highlights |
 | `VERSION_DIFF_MODEL` | no | default `claude-sonnet-5` |
 | `VERSION_DIFF_CACHE_TTL` | no | seconds, default `3600` |
 | `RELEASE_SCHEDULE_PAGE_ID` | no | default `1548517510` |
