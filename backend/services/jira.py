@@ -102,6 +102,23 @@ def list_versions(project: Optional[str] = None) -> list[dict]:
     return [_version_to_dict(v) for v in data]
 
 
+def versions_by_id(projects: list[str]) -> dict[str, dict]:
+    """Fetch each project's full version list ONCE and index by version id.
+
+    Turns the per-link `get_version` fan-out (one HTTP call per version on the
+    schedule) into one call per distinct project. A project that fails to list
+    is skipped (its versions fall back to per-id resolution by the caller).
+    """
+    out: dict[str, dict] = {}
+    for p in projects:
+        try:
+            for v in list_versions(p):
+                out[v["id"]] = v
+        except httpx.HTTPError as e:
+            log.warning("Could not list versions for project %s: %s", p, e)
+    return out
+
+
 def get_version(version_id: str) -> dict:
     """Resolve a single version by its (globally unique) id.
 

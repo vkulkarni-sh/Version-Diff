@@ -45,6 +45,7 @@ FAKE = {
     "36765": {"id": "36765", "name": "Core-8.1.0",  "description": "Placeholder for OASYS 1.1.0", "released": False, "release_date": None, "archived": False, "project_id": 1},
 }
 confluence.get_release_schedule = lambda page_id=None: FIXTURE          # type: ignore
+jira.versions_by_id = lambda projects: FAKE                            # type: ignore
 jira.get_version = lambda vid: FAKE[vid]                                # type: ignore
 
 versions = version_diff._build_versions()

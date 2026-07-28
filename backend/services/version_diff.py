@@ -50,14 +50,22 @@ def _build_versions() -> list[dict]:
     """Pull the schedule from Confluence, resolve each version from Jira."""
     html = confluence.get_release_schedule()
     links = confluence.extract_version_links(html)
+
+    # Resolve version metadata with ONE call per distinct project (AM5, UP)
+    # instead of one call per version. Fall back to per-id lookup only for the
+    # rare version that isn't in its project's list.
+    projects = sorted({link["project"] for link in links})
+    id_map = jira.versions_by_id(projects)
+
     versions: list[dict] = []
     for link in links:
         vid = link["jira_version_id"]
-        meta = {}
-        try:
-            meta = jira.get_version(vid)
-        except Exception as e:  # noqa: BLE001 — a deleted/inaccessible version shouldn't kill the list
-            log.warning("Could not resolve Jira version %s: %s", vid, e)
+        meta = id_map.get(vid) or {}
+        if not meta:
+            try:
+                meta = jira.get_version(vid)
+            except Exception as e:  # noqa: BLE001 — a deleted/inaccessible version shouldn't kill the list
+                log.warning("Could not resolve Jira version %s: %s", vid, e)
         name = meta.get("name") or f"{link['project']}-{vid}"
         versions.append({
             "key": vid,                       # numeric version id — globally unique
