@@ -40,8 +40,19 @@ CONFLUENCE_API_BASE = (
     os.getenv("CONFLUENCE_API_BASE")
     or f"https://api.atlassian.com/ex/confluence/{CONFLUENCE_CLOUD_ID}/wiki/rest/api"
 ).rstrip("/")
-# The "Amelia OASYS Release Schedule" page that lists every version + Jira link.
+# Confluence pages that list versions + their Jira release links. Harvested in
+# order; a version id seen on an earlier page wins. Override with a
+# comma-separated RELEASE_PAGE_IDS to add/remove pages without a code change.
+#   1548517510 — "Amelia & OASYS Release Schedule" (space PM)
+#   1736212555 — "Amelia V7 Patch Releases"        (space RND)
 RELEASE_SCHEDULE_PAGE_ID = (os.getenv("RELEASE_SCHEDULE_PAGE_ID") or "1548517510").strip()
+PATCH_RELEASE_PAGE_ID = (os.getenv("PATCH_RELEASE_PAGE_ID") or "1736212555").strip()
+RELEASE_PAGE_IDS = [
+    p.strip() for p in (
+        os.getenv("RELEASE_PAGE_IDS")
+        or f"{RELEASE_SCHEDULE_PAGE_ID},{PATCH_RELEASE_PAGE_ID}"
+    ).split(",") if p.strip()
+]
 
 # --- Anthropic (English narrative) ------------------------------------------
 ANTHROPIC_API_KEY = (os.getenv("ANTHROPIC_API_KEY") or "").strip()

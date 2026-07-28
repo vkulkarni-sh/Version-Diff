@@ -52,17 +52,19 @@ versions = version_diff._build_versions()
 print("ORDERED VERSIONS:")
 for v in versions:
     print(f'  #{v["order_index"]} {v["label"]:14} rd={v["release_date"]} oasys={v["oasys_label"]}')
-# dated (chronological) first, then undated in doc order
-assert [v["key"] for v in versions] == ["34245", "35063", "34144", "36765"], [v["key"] for v in versions]
-assert versions[2]["oasys_label"] == "OASYS 1.1.0"
-print("  -> ordering + oasys label OK\n")
+# ascending by version NUMBER: UP-1.1.0 (1.1.0) < 6.20.5 < 6.20.7 < 8.1.0
+assert [v["key"] for v in versions] == ["34144", "34245", "35063", "36765"], [v["key"] for v in versions]
+assert versions[0]["oasys_label"] == "OASYS 1.1.0"
+# numeric (not lexical) ordering: 7.3.10 sorts AFTER 7.3.2
+assert version_diff._version_tuple("Core-7.3.10") > version_diff._version_tuple("Core-7.3.2")
+print("  -> ascending version ordering + oasys label OK\n")
 
 # --- 3. Inclusive range ------------------------------------------------------ #
 r = version_diff.compute_range("34245", "34144", versions)
-assert r == ["34245", "35063", "34144"], r
-print("RANGE 6.20.5 -> UP-1.1.0 (inclusive):", r)
+assert r == ["34144", "34245"], r
+print("RANGE UP-1.1.0 -> 6.20.5 (inclusive):", r)
 # reversed picks auto-order
-assert version_diff.compute_range("34144", "34245", versions) == ["34245", "35063", "34144"]
+assert version_diff.compute_range("34144", "34245", versions) == ["34144", "34245"]
 print("  -> reversed selection auto-ordered OK\n")
 
 # --- 4. issuetype categorization -------------------------------------------- #

@@ -40,18 +40,39 @@ def _oasys_label(description: Optional[str]) -> Optional[str]:
     return m.group(0) if m else None
 
 
+def _version_tuple(label: str) -> tuple:
+    """Numeric version parts for ordering, e.g. 'Core-7.3.10' -> (7, 3, 10).
+    Tuples of unequal length compare naturally (7,3) < (7,3,1) < (7,3,10)."""
+    import re
+    nums = re.findall(r"\d+", label or "")
+    return tuple(int(n) for n in nums) if nums else (0,)
+
+
 def _sort_key(v: dict):
-    rd = v.get("release_date")
-    # dated versions first (chronological), then undated in document order
-    return (rd is None, rd or "", v.get("doc_index", 0))
+    # Ascending by version NUMBER (so 7.3.1 < 7.3.2 < 7.3.10, and 6.20.x < 7.x),
+    # then by label to keep same-number versions from different lines stable.
+    return (_version_tuple(v.get("label", "")), v.get("label", ""))
 
 
 def _build_versions() -> list[dict]:
-    """Pull the schedule from Confluence, resolve each version from Jira."""
-    html = confluence.get_release_schedule()
-    links = confluence.extract_version_links(html)
+    """Pull versions from every configured Confluence page, resolve from Jira."""
+    # Harvest release links across all pages, in order; first page to list a
+    # given version id wins (keeps its section label).
+    links: list[dict] = []
+    seen_ids: set[str] = set()
+    for page_id in config.RELEASE_PAGE_IDS:
+        try:
+            html = confluence.get_release_schedule(page_id)
+        except Exception as e:  # noqa: BLE001 — one bad page shouldn't drop the rest
+            log.warning("Could not load Confluence page %s: %s", page_id, e)
+            continue
+        for link in confluence.extract_version_links(html):
+            if link["jira_version_id"] in seen_ids:
+                continue
+            seen_ids.add(link["jira_version_id"])
+            links.append(link)
 
-    # Resolve version metadata with ONE call per distinct project (AM5, UP)
+    # Resolve version metadata with ONE call per distinct project (AM5, UP, …)
     # instead of one call per version. Fall back to per-id lookup only for the
     # rare version that isn't in its project's list.
     projects = sorted({link["project"] for link in links})

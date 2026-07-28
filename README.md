@@ -28,9 +28,9 @@ Confluence page (1548517510)         Jira (soundhound.atlassian.net)
                                           optional "Summarize in English" (Anthropic SDK)
 ```
 
-- **Versions** are ordered by Jira release date (a real upgrade timeline);
-  unreleased placeholders are kept after dated ones, in the page's order. The
-  full ordered list is shown in the UI so the included range is transparent.
+- **Versions** are gathered from every configured Confluence page (the release
+  schedule + the V7 patch-releases page), de-duplicated by Jira version id, and
+  ordered **ascending by version number** (so `7.3.2` < `7.3.10`, `6.20.x` < `7.x`).
 - **Range** is inclusive of both the Source and Destination versions.
 - **Bug vs Enhancement** is derived from the Jira issue type (Bug → bug;
   Improvement / New Feature / Story / Epic / Task → enhancement; else → other).
@@ -65,7 +65,7 @@ Confluence page (1548517510)         Jira (soundhound.atlassian.net)
 | `ANTHROPIC_API_KEY` | for PDF prose | omit → PDF still generates with the full ticket listing, just no AI Overview/Highlights |
 | `VERSION_DIFF_MODEL` | no | default `claude-sonnet-5` |
 | `VERSION_DIFF_CACHE_TTL` | no | seconds, default `3600` |
-| `RELEASE_SCHEDULE_PAGE_ID` | no | default `1548517510` |
+| `RELEASE_PAGE_IDS` | no | comma-separated Confluence page ids to harvest versions from; default is the release-schedule page `1548517510` + the V7 patch-releases page `1736212555` |
 | `CONFLUENCE_CLOUD_ID` | no | default is the SoundHound cloud id |
 
 See [DEPLOY.md](DEPLOY.md) for full deployment steps.
