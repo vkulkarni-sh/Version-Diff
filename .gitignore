@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+backend/.venv/
+
+# Local secrets — tokens live in the shared /opt/amelia-tools/.env on the server
+.env
+
+# Local SQLite cache (fetched versions + tickets)
+backend/data/*.db
+backend/data/*.db-journal
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store

@@ -1,0 +1,29 @@
+[Unit]
+Description=OASYS Version Diff — FastAPI backend (Confluence + Jira)
+After=network.target
+
+[Service]
+Type=simple
+# Runs as vkulkarn:ipsoft for consistency with the other tools and so the
+# working tree / SQLite cache are owned by a non-root user. There is NO Claude
+# CLI here (the English summary uses the Anthropic SDK), so root would also
+# work — but keep this parallel to the sibling tools.
+# NOTE: there is no local `vkulkarn` group — Group defaults to ipsoft.
+# chown the tree with `chown -R vkulkarn: /opt/amelia-version-diff`.
+User=vkulkarn
+Group=ipsoft
+WorkingDirectory=/opt/amelia-version-diff/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/vkulkarn
+Environment=VERSION_DIFF_DATA=/opt/amelia-version-diff/backend/data
+# Shared env file holds JIRA_USER_EMAIL, JIRA_API_TOKEN, CONFLUENCE_API_TOKEN,
+# ANTHROPIC_API_KEY for all tools.
+EnvironmentFile=/opt/amelia-tools/.env
+ExecStart=/opt/amelia-version-diff/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8004 --timeout-graceful-shutdown 3
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
