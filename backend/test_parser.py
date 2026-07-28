@@ -72,4 +72,14 @@ assert jira.categorize("New Feature") == "enhancement"
 assert jira.categorize("Spike") == "other"
 print("categorization OK")
 
+# --- 5. store cache round-trip keeps the "key" field ------------------------ #
+from services import store
+sample = [{"key": "AM5-999", "summary": "x", "status": "Done", "issuetype": "Bug",
+           "priority": "High", "category": "bug", "url": "http://j/AM5-999"}]
+store.save_tickets("34245", sample)
+back = store.get_tickets("34245")
+assert back and back[0]["key"] == "AM5-999", back   # would KeyError before the fix
+assert "ticket_key" not in back[0]
+print("store cache round-trip preserves 'key' OK")
+
 print("\nALL PARSER/LOGIC TESTS PASSED")

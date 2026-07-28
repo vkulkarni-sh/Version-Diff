@@ -142,8 +142,12 @@ def save_tickets(version_key: str, tickets: list[dict]) -> None:
 def get_tickets(version_key: str) -> list[dict]:
     with _lock:
         conn = _connect()
+        # Alias ticket_key -> key so a cache-hit ticket has the SAME shape as a
+        # fresh one from jira.issues_for_version (which uses "key"). Otherwise
+        # downstream `t["key"]` KeyErrors and the frontend renders blank keys.
         rows = conn.execute(
-            "SELECT * FROM tickets WHERE version_key = ? ORDER BY category, ticket_key",
+            "SELECT ticket_key AS key, summary, status, issuetype, category, priority, url "
+            "FROM tickets WHERE version_key = ? ORDER BY category, ticket_key",
             (version_key,),
         ).fetchall()
     return [dict(r) for r in rows]
