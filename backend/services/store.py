@@ -15,6 +15,7 @@ call these synchronously).
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from threading import Lock
@@ -49,6 +50,9 @@ def _init(conn: sqlite3.Connection) -> None:
             released        INTEGER,
             release_date    TEXT,
             url             TEXT,
+            section         TEXT,
+            project         TEXT,
+            ticket_keys     TEXT,
             fetched_at      REAL
         );
         CREATE TABLE IF NOT EXISTS tickets (
@@ -65,6 +69,13 @@ def _init(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    # Lightweight migration: add columns introduced after the first release to a
+    # pre-existing versions table (CREATE IF NOT EXISTS won't alter it). The
+    # versions table is a rebuildable cache, so this is safe.
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(versions)")}
+    for col in ("section", "project", "ticket_keys"):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE versions ADD COLUMN {col} TEXT")
     conn.commit()
 
 
@@ -80,9 +91,9 @@ def save_versions(versions: list[dict]) -> None:
         conn.executemany(
             """INSERT INTO versions
                (key, label, oasys_label, jira_version_id, order_index,
-                released, release_date, url, fetched_at)
+                released, release_date, url, section, project, ticket_keys, fetched_at)
                VALUES (:key, :label, :oasys_label, :jira_version_id, :order_index,
-                       :released, :release_date, :url, :fetched_at)""",
+                       :released, :release_date, :url, :section, :project, :ticket_keys, :fetched_at)""",
             [{
                 "key": v["key"],
                 "label": v.get("label"),
@@ -92,6 +103,9 @@ def save_versions(versions: list[dict]) -> None:
                 "released": 1 if v.get("released") else 0,
                 "release_date": v.get("release_date"),
                 "url": v.get("url"),
+                "section": v.get("section"),
+                "project": v.get("project"),
+                "ticket_keys": json.dumps(v.get("ticket_keys")) if v.get("ticket_keys") is not None else None,
                 "fetched_at": now,
             } for i, v in enumerate(versions)],
         )
@@ -104,7 +118,14 @@ def get_versions() -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM versions ORDER BY order_index ASC"
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        tk = d.get("ticket_keys")
+        d["ticket_keys"] = json.loads(tk) if tk else None
+        d["released"] = bool(d.get("released"))
+        out.append(d)
+    return out
 
 
 def versions_age() -> Optional[float]:

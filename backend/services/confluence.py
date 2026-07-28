@@ -102,3 +102,45 @@ def extract_version_links(html: str) -> list[dict]:
         })
         idx += 1
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Patch-releases page (different shape: expand macros with explicit ticket keys)
+# --------------------------------------------------------------------------- #
+_EXPAND_RE = re.compile(r'<ac:structured-macro[^>]*ac:name="expand"', re.IGNORECASE)
+_TITLE_RE = re.compile(r'ac:name="title">([^<]+)</ac:parameter>', re.IGNORECASE)
+_JIRA_KEY_RE = re.compile(r'ac:name="key">\s*([A-Za-z][A-Za-z0-9]+-\d+)\s*<', re.IGNORECASE)
+_TIME_RE = re.compile(r'datetime="(\d{4}-\d{2}-\d{2})"')
+
+
+def extract_patch_versions(html: str, page_url: str = "") -> list[dict]:
+    """Parse the "V7 Patch Releases" page.
+
+    Each ``expand`` macro is one patch line (title e.g. "Amelia V7.3.8.x") whose
+    table lists the tickets in it as Jira ticket-key macros. Returns dicts:
+    {label, ticket_keys, release_date, section, url}. Tickets are resolved from
+    Jira by key later (there is no fixVersion here).
+    """
+    starts = [m.start() for m in _EXPAND_RE.finditer(html)]
+    starts.append(len(html))
+    out: list[dict] = []
+    for i in range(len(starts) - 1):
+        block = html[starts[i]:starts[i + 1]]
+        title_m = _TITLE_RE.search(block)
+        if not title_m:
+            continue
+        label = _strip(title_m.group(1)).replace("Amelia ", "").strip() or title_m.group(1)
+        keys = list(dict.fromkeys(_JIRA_KEY_RE.findall(block)))
+        dates = _TIME_RE.findall(block)
+        out.append({
+            "label": label,
+            "ticket_keys": keys,
+            "release_date": max(dates) if dates else None,
+            "section": "V7 Patch Releases",
+            "url": page_url or None,
+        })
+    return out
+
+
+def page_url(page_id: str, space: str = "RND") -> str:
+    return f"{config.JIRA_BASE_URL}/wiki/spaces/{space}/pages/{page_id}"

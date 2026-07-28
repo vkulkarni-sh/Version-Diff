@@ -56,10 +56,15 @@ def _sort_key(v: dict):
 
 def _build_versions() -> list[dict]:
     """Pull versions from every configured Confluence page, resolve from Jira."""
-    # Harvest release links across all pages, in order; first page to list a
-    # given version id wins (keeps its section label).
-    links: list[dict] = []
+    # Harvest from every configured page. A page is parsed BOTH ways — the
+    # release-schedule pages yield fixVersion links, the patch-releases page
+    # yields expand macros with explicit ticket keys; each parser returns []
+    # for a page that isn't its shape, so we don't need to know which is which.
+    links: list[dict] = []          # {jira_version_id, project, section, url, doc_index}
+    patches: list[dict] = []        # {label, ticket_keys, release_date, section, url}
     seen_ids: set[str] = set()
+    seen_patch: set[str] = set()
+    import re as _re
     for page_id in config.RELEASE_PAGE_IDS:
         try:
             html = confluence.get_release_schedule(page_id)
@@ -71,6 +76,12 @@ def _build_versions() -> list[dict]:
                 continue
             seen_ids.add(link["jira_version_id"])
             links.append(link)
+        for p in confluence.extract_patch_versions(html, confluence.page_url(page_id)):
+            # only real patch-version expands (label carries a dotted version)
+            if not _re.search(r"\d+\.\d+", p["label"]) or p["label"] in seen_patch:
+                continue
+            seen_patch.add(p["label"])
+            patches.append(p)
 
     # Resolve version metadata with ONE call per distinct project (AM5, UP, …)
     # instead of one call per version. Fall back to per-id lookup only for the
@@ -99,7 +110,26 @@ def _build_versions() -> list[dict]:
             "release_date": meta.get("release_date"),
             "url": link["url"],
             "doc_index": link["doc_index"],
+            "ticket_keys": None,          # fetched by fixVersion
         })
+
+    # Patch-line entries: tickets come from the explicit key list on the page.
+    for p in patches:
+        slug = "patch:" + _re.sub(r"[^a-z0-9.]+", "-", p["label"].lower()).strip("-")
+        versions.append({
+            "key": slug,
+            "label": p["label"],
+            "oasys_label": None,
+            "jira_version_id": None,
+            "project": config.JIRA_PROJECT,
+            "section": p.get("section") or "V7 Patch Releases",
+            "released": bool(p.get("release_date")),
+            "release_date": p.get("release_date"),
+            "url": p.get("url"),
+            "doc_index": 10_000,
+            "ticket_keys": p.get("ticket_keys") or [],
+        })
+
     versions.sort(key=_sort_key)
     for i, v in enumerate(versions):
         v["order_index"] = i
@@ -157,13 +187,22 @@ def compute_range(source_key: str, dest_key: str, versions: Optional[list[dict]]
 # --------------------------------------------------------------------------- #
 # Tickets per version (cached)
 # --------------------------------------------------------------------------- #
-def _tickets_for(version_key: str, refresh: bool) -> list[dict]:
+def _tickets_for(v: dict, refresh: bool) -> list[dict]:
+    """Tickets for a version. Release versions query by fixVersion; patch-line
+    entries fetch their explicit ticket-key list. Cached in the store either way."""
+    key = v["key"]
     if not refresh:
-        age = store.tickets_age(version_key)
+        age = store.tickets_age(key)
         if age is not None and age < config.CACHE_TTL_SECONDS:
-            return store.get_tickets(version_key)
-    tickets = jira.issues_for_version(version_key)
-    store.save_tickets(version_key, tickets)
+            return store.get_tickets(key)
+    ticket_keys = v.get("ticket_keys")
+    if ticket_keys:
+        tickets = jira.issues_by_keys(ticket_keys)
+    elif v.get("jira_version_id"):
+        tickets = jira.issues_for_version(v["jira_version_id"])
+    else:
+        tickets = []
+    store.save_tickets(key, tickets)
     return tickets
 
 
@@ -180,7 +219,7 @@ def diff(source_key: str, dest_key: str, refresh: bool = False) -> dict:
         v = _version_by_key(versions, key)
         bucket = {"version": v, "bugs": [], "enhancements": [], "other": [], "error": None}
         try:
-            for t in _tickets_for(key, refresh):
+            for t in _tickets_for(v, refresh):
                 cat = t.get("category", "other")
                 if cat == "bug":
                     bucket["bugs"].append(t)

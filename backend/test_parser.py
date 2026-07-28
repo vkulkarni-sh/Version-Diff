@@ -106,4 +106,36 @@ assert _out.stat().st_size > 1000 and _out.read_bytes()[:5] == b"%PDF-", "PDF no
 assert release_notes.path_for("../etc/passwd") is None  # traversal guard
 print("release-notes PDF render + traversal guard OK")
 
+# --- 7. patch-releases page (expand macros + explicit ticket keys) ----------- #
+PATCH_FIXTURE = """
+<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">Amelia V7.3.8.x</ac:parameter><ac:rich-text-body>
+<table><tbody>
+<tr><td><time datetime="2026-07-13"/></td><td>
+  <ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">AM5-18552</ac:parameter></ac:structured-macro>
+  <ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">AM5-18553</ac:parameter></ac:structured-macro></td></tr>
+<tr><td><time datetime="2026-07-17"/></td><td>
+  <ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">AM5-18552</ac:parameter></ac:structured-macro></td></tr>
+</tbody></table></ac:rich-text-body></ac:structured-macro>
+<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">Amelia V7.3.3.x</ac:parameter><ac:rich-text-body>
+<p><time datetime="2026-03-04"/></p></ac:rich-text-body></ac:structured-macro>
+<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">Notes</ac:parameter><ac:rich-text-body><p>not a version</p></ac:rich-text-body></ac:structured-macro>
+"""
+pv = confluence.extract_patch_versions(PATCH_FIXTURE, "http://wiki/patch")
+print("PATCH ENTRIES:", [(p["label"], p["ticket_keys"], p["release_date"]) for p in pv])
+labels = [p["label"] for p in pv]
+assert labels == ["V7.3.8.x", "V7.3.3.x", "Notes"], labels        # "Amelia " stripped
+assert pv[0]["ticket_keys"] == ["AM5-18552", "AM5-18553"]         # deduped, in order
+assert pv[0]["release_date"] == "2026-07-17"                      # latest date in the expand
+assert pv[1]["ticket_keys"] == []
+assert version_diff._version_tuple("V7.3.8.x") == (7, 3, 8)       # 'x' ignored; sorts among 7.3.8
+assert jira._KEY_RE.match("AM5-18552") and not jira._KEY_RE.match("not-a-key")
+print("  -> patch-page parser + key filter OK")
+
+# --- 8. version ticket_keys round-trips through the store -------------------- #
+store.save_versions([{"key": "patch:v7.3.8.x", "label": "V7.3.8.x", "order_index": 0,
+                      "released": True, "release_date": "2026-07-17", "ticket_keys": ["AM5-1", "AM5-2"]}])
+vs = store.get_versions()
+assert vs and vs[0]["ticket_keys"] == ["AM5-1", "AM5-2"], vs
+print("  -> version ticket_keys round-trip OK")
+
 print("\nALL PARSER/LOGIC TESTS PASSED")

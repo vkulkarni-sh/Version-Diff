@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from typing import Any, Optional
 
 import httpx
@@ -155,23 +156,16 @@ def _issue_to_dict(issue: dict) -> dict:
     }
 
 
-def issues_for_version(version_id: str) -> list[dict]:
-    """Every issue whose fixVersion is ``version_id``.
-
-    Queried by the numeric version id alone — it's globally unique, so this
-    works whether the version belongs to AM5 or UP without a project filter.
-    Handles either search endpoint transparently.
-    """
+def _search(jql: str) -> list[dict]:
+    """Run a JQL search, transparently picking the working endpoint."""
     global _search_endpoint
-    jql = f'fixVersion = {version_id} ORDER BY issuetype ASC, key ASC'
-
     order = ["jql", "legacy"] if _search_endpoint is None else [_search_endpoint]
     last_err: Optional[Exception] = None
     for endpoint in order:
         try:
             issues = (_search_jql if endpoint == "jql" else _search_legacy)(jql)
             _search_endpoint = endpoint
-            return [_issue_to_dict(i) for i in issues]
+            return issues
         except httpx.HTTPStatusError as e:
             # 404/410 => endpoint not available on this instance; try the other.
             # A 400 is a bad-query error — surface it, don't fall through to the
@@ -183,6 +177,33 @@ def issues_for_version(version_id: str) -> list[dict]:
     if last_err:
         raise last_err
     return []
+
+
+def issues_for_version(version_id: str) -> list[dict]:
+    """Every issue whose fixVersion is ``version_id``.
+
+    Queried by the numeric version id alone — it's globally unique, so this
+    works whether the version belongs to AM5 or UP without a project filter.
+    """
+    jql = f"fixVersion = {version_id} ORDER BY issuetype ASC, key ASC"
+    return [_issue_to_dict(i) for i in _search(jql)]
+
+
+_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
+
+
+def issues_by_keys(keys: list[str]) -> list[dict]:
+    """Fetch a specific set of issues by key (for the patch-releases page, which
+    lists ticket keys directly rather than a fixVersion)."""
+    clean = [k for k in dict.fromkeys(k.strip() for k in keys) if _KEY_RE.match(k or "")]
+    if not clean:
+        return []
+    out: list[dict] = []
+    for i in range(0, len(clean), 100):  # JQL 'in' list — chunk to be safe
+        chunk = clean[i:i + 100]
+        jql = "key in (%s) ORDER BY issuetype ASC, key ASC" % ",".join(chunk)
+        out.extend(_search(jql))
+    return [_issue_to_dict(x) for x in out]
 
 
 def _search_jql(jql: str) -> list[dict]:
