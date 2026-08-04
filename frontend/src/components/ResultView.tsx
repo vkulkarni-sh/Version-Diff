@@ -95,6 +95,17 @@ export default function ResultView({ diff }: { diff: DiffResponse }) {
           <span className="text-emerald-300"><b>{diff.total_enhancements}</b> enhancements</span>
           {diff.total_other > 0 && <span className="text-slate-400"><b>{diff.total_other}</b> other</span>}
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+          <span className="uppercase tracking-wide text-slate-500 mr-0.5">Versions:</span>
+          {diff.buckets.map((b, i) => (
+            <span key={b.version.key} className="inline-flex items-center gap-1.5">
+              <span className="px-1.5 py-0.5 rounded bg-slate-800/70 border border-slate-700 text-slate-200 font-medium">
+                {b.version.label}
+              </span>
+              {i < diff.buckets.length - 1 && <span className="text-slate-600">→</span>}
+            </span>
+          ))}
+        </div>
       </div>
 
       {diff.buckets.map(b => <VersionSection key={b.version.key} b={b} />)}
