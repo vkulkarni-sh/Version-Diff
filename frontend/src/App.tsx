@@ -179,7 +179,7 @@ export default function App() {
                 </div>
               </div>
               <a className="btn-secondary inline-flex items-center gap-2" href={absoluteApiUrl(notes.download_path)}
-                 target="_blank" rel="noopener noreferrer" download>
+                 target="_blank" rel="noopener noreferrer" download={notes.filename}>
                 <Download className="w-4 h-4" /> Download PDF
               </a>
             </div>

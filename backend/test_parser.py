@@ -101,10 +101,19 @@ _diff = {
 }
 _out = _cfg.DATA_DIR / "exports" / "smoke.pdf"
 _out.parent.mkdir(parents=True, exist_ok=True)
-release_notes.build_pdf(_diff, {"overview": "Overview text (AM5-1).", "highlights": ["Fixed AM5-1.", "Added AM5-2."]}, _out)
+release_notes.build_pdf(_diff, {"summary": "Fixes across 7.3.x (AM5-1).", "highlights": ["Fixed AM5-1.", "Added AM5-2."]}, _out)
 assert _out.stat().st_size > 1000 and _out.read_bytes()[:5] == b"%PDF-", "PDF not produced"
 assert release_notes.path_for("../etc/passwd") is None  # traversal guard
-print("release-notes PDF render + traversal guard OK")
+# summary is ALWAYS produced, even with no AI key (force the no-key path)
+_saved_key = _cfg.ANTHROPIC_API_KEY
+_cfg.ANTHROPIC_API_KEY = ""
+_fb = release_notes._prose(_diff)
+_cfg.ANTHROPIC_API_KEY = _saved_key
+assert _fb["summary"] and "bug fixes" in _fb["summary"] and _fb["ai"] is False, _fb
+# filename convention: "<src> - <dst> - Release Notes.pdf" (hyphens/dots kept)
+_fn = f"{release_notes._safe('Core-7.3.1')} - {release_notes._safe('Core-7.3.6')} - Release Notes.pdf"
+assert _fn == "Core-7.3.1 - Core-7.3.6 - Release Notes.pdf", _fn
+print("release-notes PDF + summary fallback + filename convention + traversal guard OK")
 
 # --- 7. patch-releases page (expand macros + explicit ticket keys) ----------- #
 PATCH_FIXTURE = """

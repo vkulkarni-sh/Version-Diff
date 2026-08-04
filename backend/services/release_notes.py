@@ -46,43 +46,71 @@ _MUTED = colors.HexColor("#64748b")
 
 _RN_SYSTEM = (
     "You are a technical writer producing customer-facing release notes for the "
-    "SoundHound OASYS platform. You are given the bugs and enhancements fixed "
-    "across a range of releases. Write a concise, professional Overview and a "
-    "set of themed Key Highlights.\n"
+    "SoundHound OASYS platform. You are given every bug fix and enhancement "
+    "delivered between a source release and a destination release. Write:\n"
+    "  1. a 'summary' — a clear 3-6 sentence narrative of WHAT CHANGED between "
+    "the source and destination version: the main themes of the fixes and "
+    "improvements and their customer impact.\n"
+    "  2. 'highlights' — 5-12 bullets grouping related changes into themes, each "
+    "leading with impact.\n"
     "Rules:\n"
     "- Ground EVERYTHING in the provided tickets. Never invent tickets, numbers, "
     "or features.\n"
     "- Cite ticket keys in parentheses where relevant, e.g. (AM5-18731).\n"
-    "- Highlights should group related changes into themes and lead with customer "
-    "impact, not internal jargon.\n"
-    "Return ONLY valid JSON, no markdown fences, matching exactly:\n"
-    '{"overview": "2-4 sentence paragraph", "highlights": ["bullet", "bullet", ...]}'
+    "Return ONLY valid JSON, no markdown fences, exactly:\n"
+    '{"summary": "3-6 sentence paragraph", "highlights": ["bullet", "bullet", ...]}'
 )
 
 
+def _fallback_summary(d: dict) -> str:
+    """Deterministic summary so the PDF ALWAYS states what changed, even when the
+    AI call is unavailable or fails."""
+    n = len(d["range_keys"])
+    vers = " through ".join([d["source"]["label"], d["destination"]["label"]]) if n > 1 else d["source"]["label"]
+    return (
+        f"This release rolls up {d['total_bugs']} bug fixes and "
+        f"{d['total_enhancements']} enhancements delivered across {n} "
+        f"release{'s' if n != 1 else ''} ({vers}). See the detailed changes below, "
+        f"grouped by version, for the full list of tickets."
+    )
+
+
 def _prose(d: dict) -> dict:
-    """Claude-generated {overview, highlights[]}. Empty if no key / on failure."""
+    """{summary, highlights[]}. Always returns a non-empty summary — AI-written
+    when possible, otherwise a deterministic fallback."""
+    fallback = {"summary": _fallback_summary(d), "highlights": [], "ai": False}
     if not config.anthropic_configured():
-        return {"overview": "", "highlights": []}
+        return fallback
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=180.0, max_retries=2)
         msg = client.messages.create(
             model=config.VERSION_DIFF_MODEL,
-            max_tokens=2048,
+            max_tokens=3000,
             system=_RN_SYSTEM,
             messages=[{"role": "user", "content": version_diff.diff_to_prompt(d)}],
         )
         text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
-        text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
-        data = json.loads(text)
-        return {
-            "overview": str(data.get("overview", "")).strip(),
-            "highlights": [str(h).strip() for h in data.get("highlights", []) if str(h).strip()],
-        }
-    except Exception as e:  # noqa: BLE001 — prose is best-effort; the PDF still renders without it
-        log.warning("Release-notes prose generation failed: %s", e)
-        return {"overview": "", "highlights": []}
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.MULTILINE).strip()
+        summary, highlights = "", []
+        try:
+            data = json.loads(text)
+            summary = str(data.get("summary") or data.get("overview") or "").strip()
+            highlights = [str(h).strip() for h in (data.get("highlights") or []) if str(h).strip()]
+        except json.JSONDecodeError:
+            # Salvage a non-JSON response: prose as summary, bullet lines as highlights.
+            log.warning("Release-notes prose was not valid JSON; salvaging as text.")
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            bullets = [re.sub(r"^[-*•]\s*", "", l) for l in lines if re.match(r"^[-*•]\s+", l)]
+            summary = " ".join(l for l in lines if not re.match(r"^[-*•]\s+", l)) or text
+            highlights = bullets
+        if not summary:
+            summary = fallback["summary"]
+        return {"summary": summary, "highlights": highlights, "ai": True}
+    except Exception as e:  # noqa: BLE001 — never let prose failure block the PDF
+        log.warning("Release-notes prose generation failed (%s: %s); using fallback summary.",
+                    type(e).__name__, e)
+        return fallback
 
 
 # --------------------------------------------------------------------------- #
@@ -160,9 +188,11 @@ def build_pdf(d: dict, prose: dict, out_path: Path) -> None:
         HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#e2e8f0"), spaceAfter=8),
     ]
 
-    if prose.get("overview"):
-        story.append(Paragraph("Overview", styles["h2"]))
-        story.append(Paragraph(escape(prose["overview"]), styles["body"]))
+    # Always render a summary of what changed (AI-written or deterministic).
+    summary = prose.get("summary") or prose.get("overview") or ""
+    if summary:
+        story.append(Paragraph("Summary of Changes", styles["h2"]))
+        story.append(Paragraph(escape(summary), styles["body"]))
     if prose.get("highlights"):
         story.append(Paragraph("Key Highlights", styles["h2"]))
         story.append(ListFlowable(
@@ -219,7 +249,8 @@ def build_pdf(d: dict, prose: dict, out_path: Path) -> None:
 # Orchestration
 # --------------------------------------------------------------------------- #
 def _safe(label: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-") or "version"
+    # Keep spaces/dots/hyphens (valid in filenames); strip only path-illegal chars.
+    return re.sub(r'[\\/:*?"<>|]+', "-", (label or "").strip()).strip() or "version"
 
 
 def create(source_key: str, dest_key: str) -> dict:
@@ -227,12 +258,16 @@ def create(source_key: str, dest_key: str) -> dict:
     d = version_diff.diff(source_key, dest_key)
     prose = _prose(d)
 
-    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    file_id = uuid.uuid4().hex[:16]
-    out_path = EXPORTS_DIR / f"{file_id}.pdf"
-    build_pdf(d, prose, out_path)
+    # Naming convention: "<Source Version> - <Destination Version> - Release Notes"
+    filename = f"{_safe(d['source']['label'])} - {_safe(d['destination']['label'])} - Release Notes.pdf"
 
-    filename = f"OASYS-Release-Notes-{_safe(d['source']['label'])}-to-{_safe(d['destination']['label'])}.pdf"
+    # Store under a per-id folder using the human filename, so the download
+    # served by GET carries the right name (the id keeps URLs opaque + unique).
+    file_id = uuid.uuid4().hex[:16]
+    out_dir = EXPORTS_DIR / file_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / filename
+    build_pdf(d, prose, out_path)
     return {
         "file_id": file_id,
         "filename": filename,
@@ -240,7 +275,7 @@ def create(source_key: str, dest_key: str) -> dict:
         "range_keys": d["range_keys"],
         "total_bugs": d["total_bugs"],
         "total_enhancements": d["total_enhancements"],
-        "had_prose": bool(prose.get("overview") or prose.get("highlights")),
+        "had_prose": bool(prose.get("ai")),
     }
 
 
@@ -248,5 +283,8 @@ def path_for(file_id: str) -> Path | None:
     # file_id is our own hex token; still guard against traversal.
     if not re.fullmatch(r"[0-9a-f]{6,32}", file_id or ""):
         return None
-    p = EXPORTS_DIR / f"{file_id}.pdf"
-    return p if p.exists() else None
+    out_dir = EXPORTS_DIR / file_id
+    if not out_dir.is_dir():
+        return None
+    pdfs = sorted(out_dir.glob("*.pdf"))
+    return pdfs[0] if pdfs else None
