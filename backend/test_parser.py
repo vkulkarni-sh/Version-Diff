@@ -147,4 +147,19 @@ vs = store.get_versions()
 assert vs and vs[0]["ticket_keys"] == ["AM5-1", "AM5-2"], vs
 print("  -> version ticket_keys round-trip OK")
 
+# --- 9. patch '.x' expands to concrete Jira patch versions ------------------- #
+_allv = [
+    {"id": "1", "name": "Core-7.3.8"},                    # base (len 3) — not a patch
+    {"id": "2", "name": "Core-7.3.8.1", "released": True, "release_date": "2026-07-13"},
+    {"id": "3", "name": "Core-7.3.8.2", "released": True, "release_date": "2026-07-17"},
+    {"id": "4", "name": "Core-7.3.8.special-1"},          # digits 7.3.8.1 — still 7.3.8 line
+    {"id": "5", "name": "Embedding-Service-7.3.8.1"},     # not Core- — excluded
+    {"id": "6", "name": "Core-7.3.6.1"},                  # different line
+    {"id": "7", "name": "Core-17.3.8.1"},                 # 17.x — must NOT match 7.3.8
+]
+m = version_diff._patch_matches("V7.3.8.x", _allv)
+assert sorted(x["name"] for x in m) == ["Core-7.3.8.1", "Core-7.3.8.2", "Core-7.3.8.special-1"], m
+assert [x["name"] for x in version_diff._patch_matches("V7.3.6.x", _allv)] == ["Core-7.3.6.1"]
+print("patch '.x' -> concrete Jira patch versions OK")
+
 print("\nALL PARSER/LOGIC TESTS PASSED")

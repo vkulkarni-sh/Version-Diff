@@ -31,6 +31,10 @@ Confluence page (1548517510)         Jira (soundhound.atlassian.net)
 - **Versions** are gathered from every configured Confluence page (the release
   schedule + the V7 patch-releases page), de-duplicated by Jira version id, and
   ordered **ascending by version number** (so `7.3.2` < `7.3.10`, `6.20.x` < `7.x`).
+- **Patch lines** (`V7.3.8.x` on the wiki) are expanded into the **concrete Jira
+  patch versions** that extend that number (`Core-7.3.8.1`, `Core-7.3.8.2`, …), so
+  each is a real release whose tickets come from its own fixVersion. If Jira has
+  no matching version, the wiki's explicit ticket-key bundle is used as fallback.
 - **Range** is inclusive of both the Source and Destination versions.
 - **Bug vs Enhancement** is derived from the Jira issue type (Bug → bug;
   Improvement / New Feature / Story / Epic / Task → enhancement; else → other).

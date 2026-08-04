@@ -54,6 +54,19 @@ def _sort_key(v: dict):
     return (_version_tuple(v.get("label", "")), v.get("label", ""))
 
 
+def _patch_matches(patch_label: str, all_versions: list[dict]) -> list[dict]:
+    """Concrete Jira patch versions for a 'V7.3.8.x' line: Core-named versions
+    whose number extends the line's prefix by one part (Core-7.3.8.1, .2, …)."""
+    pref = _version_tuple(patch_label)          # e.g. "V7.3.8.x" -> (7, 3, 8)
+    out = []
+    for v in all_versions:
+        name = v.get("name") or ""
+        t = _version_tuple(name)
+        if name.startswith("Core-") and len(t) > len(pref) and t[:len(pref)] == pref:
+            out.append(v)
+    return out
+
+
 def _build_versions() -> list[dict]:
     """Pull versions from every configured Confluence page, resolve from Jira."""
     # Harvest from every configured page. A page is parsed BOTH ways — the
@@ -86,8 +99,11 @@ def _build_versions() -> list[dict]:
     # Resolve version metadata with ONE call per distinct project (AM5, UP, …)
     # instead of one call per version. Fall back to per-id lookup only for the
     # rare version that isn't in its project's list.
-    projects = sorted({link["project"] for link in links})
+    # Always include the main project so id_map holds every AM5 version (incl.
+    # the concrete 4-part patch versions we expand the '.x' lines into).
+    projects = sorted({link["project"] for link in links} | {config.JIRA_PROJECT})
     id_map = jira.versions_by_id(projects)
+    all_versions = list(id_map.values())
 
     versions: list[dict] = []
     for link in links:
@@ -113,22 +129,47 @@ def _build_versions() -> list[dict]:
             "ticket_keys": None,          # fetched by fixVersion
         })
 
-    # Patch-line entries: tickets come from the explicit key list on the page.
+    # Patch lines: expand each 'V7.3.8.x' into the CONCRETE Jira patch versions
+    # (Core-7.3.8.1, .2, …) and fetch their tickets by real fixVersion — accurate.
+    # If a line has no matching Jira version, fall back to the wiki key bundle.
+    added_ids = {v["key"] for v in versions}
     for p in patches:
-        slug = "patch:" + _re.sub(r"[^a-z0-9.]+", "-", p["label"].lower()).strip("-")
-        versions.append({
-            "key": slug,
-            "label": p["label"],
-            "oasys_label": None,
-            "jira_version_id": None,
-            "project": config.JIRA_PROJECT,
-            "section": p.get("section") or "V7 Patch Releases",
-            "released": bool(p.get("release_date")),
-            "release_date": p.get("release_date"),
-            "url": p.get("url"),
-            "doc_index": 10_000,
-            "ticket_keys": p.get("ticket_keys") or [],
-        })
+        matched = _patch_matches(p["label"], all_versions)
+        if matched:
+            for mv in matched:
+                vid = str(mv["id"])
+                if vid in added_ids:
+                    continue
+                added_ids.add(vid)
+                versions.append({
+                    "key": vid,
+                    "label": mv.get("name") or f"{config.JIRA_PROJECT}-{vid}",
+                    "oasys_label": None,
+                    "jira_version_id": vid,
+                    "project": config.JIRA_PROJECT,
+                    "section": p.get("section") or "V7 Patch Releases",
+                    "released": mv.get("released", False),
+                    "release_date": mv.get("release_date"),
+                    "url": f"{config.JIRA_BASE_URL}/projects/{config.JIRA_PROJECT}"
+                           f"/versions/{vid}/tab/release-report-all-issues",
+                    "doc_index": 10_000,
+                    "ticket_keys": None,          # fetched by fixVersion
+                })
+        else:
+            slug = "patch:" + _re.sub(r"[^a-z0-9.]+", "-", p["label"].lower()).strip("-")
+            versions.append({
+                "key": slug,
+                "label": p["label"],
+                "oasys_label": None,
+                "jira_version_id": None,
+                "project": config.JIRA_PROJECT,
+                "section": p.get("section") or "V7 Patch Releases",
+                "released": bool(p.get("release_date")),
+                "release_date": p.get("release_date"),
+                "url": p.get("url"),
+                "doc_index": 10_000,
+                "ticket_keys": p.get("ticket_keys") or [],
+            })
 
     versions.sort(key=_sort_key)
     for i, v in enumerate(versions):
