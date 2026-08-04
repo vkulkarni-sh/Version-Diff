@@ -91,8 +91,14 @@ def post_release_notes(req: ReleaseNotesRequest) -> dict:
 
 
 @router.get("/diff/release-notes/{file_id}")
-def get_release_notes(file_id: str) -> FileResponse:
+def get_release_notes(file_id: str, download: bool = Query(default=False)) -> FileResponse:
     path = release_notes.path_for(file_id)
     if path is None:
         raise HTTPException(404, "Release-notes file not found or expired. Generate it again.")
-    return FileResponse(str(path), media_type="application/pdf", filename=path.name)
+    # Default to inline so the browser can VIEW it in a tab — plain-HTTP intranet
+    # blocks attachment *downloads* as "insecure". ?download=1 forces the save.
+    disposition = "attachment" if download else "inline"
+    return FileResponse(
+        str(path), media_type="application/pdf", filename=path.name,
+        content_disposition_type=disposition,
+    )

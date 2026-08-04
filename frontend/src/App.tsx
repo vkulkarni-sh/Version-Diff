@@ -178,7 +178,8 @@ export default function App() {
                   {notes.had_prose ? ' · AI overview included' : ' · ticket listing only (no AI key)'}
                 </div>
               </div>
-              <a className="btn-secondary inline-flex items-center gap-2" href={absoluteApiUrl(notes.download_path)}
+              <a className="btn-secondary inline-flex items-center gap-2"
+                 href={absoluteApiUrl(notes.download_path) + '?download=1'}
                  target="_blank" rel="noopener noreferrer" download={notes.filename}>
                 <Download className="w-4 h-4" /> Download PDF
               </a>
