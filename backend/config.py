@@ -6,7 +6,7 @@ shared ``/opt/amelia-tools/.env`` (via the systemd ``EnvironmentFile=``). For
 local development, a ``.env`` in the repo root or backend/ is auto-loaded.
 
 Auth model (confirmed by the other tools):
-  - Jira      : Basic  base64(JIRA_USER_EMAIL : JIRA_API_TOKEN)
+  - Jira      : Basic  base64(JIRA_USER_EMAIL : JIRA_API_TOKEN_SHJira)
   - Confluence: Basic  base64(JIRA_USER_EMAIL : CONFLUENCE_API_TOKEN)   ← same user
 """
 from __future__ import annotations
@@ -25,7 +25,14 @@ for candidate in (Path(__file__).resolve().parent / ".env",
 
 # --- Identity / auth (shared between Jira + Confluence) ---------------------
 JIRA_USER_EMAIL = (os.getenv("JIRA_USER_EMAIL") or "").strip()
-JIRA_API_TOKEN = (os.getenv("JIRA_API_TOKEN") or "").strip()
+# Version Diff authenticates to Jira with the shJira token
+# (JIRA_API_TOKEN_SHJira in the shared env). Fall back to a plain
+# JIRA_API_TOKEN only for back-compat with an older single-token setup.
+JIRA_API_TOKEN = (
+    os.getenv("JIRA_API_TOKEN_SHJira")
+    or os.getenv("JIRA_API_TOKEN")
+    or ""
+).strip()
 CONFLUENCE_API_TOKEN = (os.getenv("CONFLUENCE_API_TOKEN") or "").strip()
 
 # --- Jira -------------------------------------------------------------------
